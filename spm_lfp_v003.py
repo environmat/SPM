@@ -1,6 +1,8 @@
 ### Sources: 
-#https://honors.libraries.psu.edu/files/final_submissions/3057
-#https://github.com/davidhowey/Spectral_li-ion_SPM/blob/master/source/derivs_spm.m 
+# https://honors.libraries.psu.edu/files/final_submissions/3057
+# https://github.com/davidhowey/Spectral_li-ion_SPM/blob/master/source/derivs_spm.m 
+# M. Safari and C. Delacourt 2011 J. Electrochem. Soc. 158 A562
+# M. Safari and C. Delacourt 2011 J. Electrochem. Soc. 158 A1123
 ###
 
 import math
