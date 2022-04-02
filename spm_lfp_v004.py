@@ -8,7 +8,7 @@
 import math
 import pandas as pd
 import numpy as np
-from matplotlib import pyplot
+from matplotlib import pyplot as plt
 from matplotlib.pyplot import figure
 
 t = 7000  #simulation time. s
@@ -20,20 +20,20 @@ alpha = 0.5 # Symmetrie factor
 n = 1 # [# of electrons] - number of electrons transfered
 Cmax_cath = 22800 # mol/m^3
 Cmax_anode = 31370 # mol/m^3
-R_cath= 5e-8 # 50 nm 
+R_cath= 8e-8 # 50 nm 
 R_anode = 3.5e-6 # 3 micro meter
-D_cath = 1e-17 # Solid diffusivity of the cathode, m^2*s^-1
+D_cath = 100e-17 # Solid diffusivity of the cathode, m^2*s^-1
 D_anode = 2e-14
-C_rate_inv = 1.05
+C_rate_inv = 1
 I=2.5/C_rate_inv # current for 2.5 Ah cell 
-R_int = 0.020 # mOhm
+R_int = 0.020 # Ohm
 
 
 N = 8 # number of radial segments
 dr_cath = R_cath/N # radial segment length, m
 dr_anode = R_anode/N
 
-dt = dr_cath**2/(2*D_cath)*0.9
+dt = dr_cath**2/(2*D_cath)*0.95
 dt_anode = dr_anode**2/(2*D_anode)*0.9
 numofsteps = int(t/dt)
 numofsteps_anode = int(t/dt_anode)
@@ -41,8 +41,8 @@ timehis = np.linspace(0,t,num=numofsteps)
 timehis_anode = np.linspace(0,t, num = numofsteps_anode)
 
 I_dyn = np.linspace(I , I , numofsteps)
-I_dyn[int(numofsteps/2):int(3*numofsteps/4)] = (-I/2)
-I_dyn[int(3*numofsteps/4):(numofsteps)] = 0
+I_dyn[int(1*numofsteps/2):int(numofsteps)] = (-I)
+# I_dyn[int(3*numofsteps/4):(numofsteps)] = 0
 
 # Cathode ---------------------------------------------------------
 coul_cath = 2.5*3600 #A123 2.5Ah
@@ -52,6 +52,7 @@ partvol_cath = (4/3)*math.pi*(R_cath**3)
 numpart_cath = vol_cath/partvol_cath
 A_cath = numpart_cath*4*math.pi*(R_cath**2)
 k_cath = -4.3e-16*I**2 + 2e-14*np.abs(I) + 1.1e-14 # Safari et al. / reaction rate cathode
+eps_c = 0.3
 
 # Anode ---------------------------------------------------------
 vol_anode = (mol_cath*1.2)/Cmax_anode
@@ -59,6 +60,7 @@ partvol_anode = (4/3)*math.pi*(R_anode**3)
 numpart_anode = vol_anode/partvol_anode
 A_anode = numpart_anode*4*math.pi*(R_anode**2)
 k_anode = 8.2e-12 # reaction rate anode 
+eps_a = 0.43
 
 ## Specific interfacial surface area in porous electrodes [m2/m3]
     # % due to the porosity, the 'effective' surface is larger than the
@@ -88,8 +90,12 @@ a1r1 = np.zeros([N,numofsteps])
 
 i_area_c = I / A_cath # A / m2
 i_area_a = I / A_anode  # A / m2
-i_eta_cath = i_area_c /(A_cath * vol_cath) #i_area_c / 2*R_cath / (4*math.pi*(R_cath**2))
-i_eta_anode = i_area_a /(A_anode * vol_anode)
+i_eta_cath = i_area_c /(F* A_cath * vol_cath) #i_area_c / 2*R_cath / (4*math.pi*(R_cath**2))
+i_eta_anode = i_area_a /(F* A_anode * vol_anode)
+
+i_flux_cath = I / ((3*eps_c/R_cath)*F*vol_cath)
+i_flux_anode = I / ((3*eps_a/R_anode)*F*vol_anode)
+
 
 for k in range(N): 
     m=k+1
@@ -101,13 +107,19 @@ for k in range(N):
 C_cath = np.zeros([N+1,numofsteps])
 U_cath = np.zeros([numofsteps])
 i_0_cath = np.zeros([numofsteps])
+i_flux_cath = np.zeros([numofsteps])
 eta_cath = np.zeros([numofsteps])
+eta_c = np.zeros([numofsteps])
 
 # Anode ---------------------------------------------------------
 C_anode = np.zeros([N+1, numofsteps])
 U_anode = np.zeros([numofsteps])
 i_0_anode = np.zeros([numofsteps])
+i_flux_anode = np.zeros([numofsteps])
+j_Li_anode = np.zeros([numofsteps])
+j_Li_cathode = np.zeros([numofsteps])
 eta_anode = np.zeros([numofsteps])
+eta_a = np.zeros([numofsteps])
 
 U_cell = np.zeros([numofsteps])
 
@@ -115,13 +127,47 @@ U_cell = np.zeros([numofsteps])
 for i in range(N+1):
     for k in range(numofsteps):
         C_cath[i,0]=c_init_cath[45] 
-        C_anode[i,0] = c_init_anode[0]
+        C_anode[i,0] = c_init_anode[5]
 
 dr2_cath = dr_cath*dr_cath
 dr2_anode = dr_anode*dr_anode
 
+# initialize potential values for first step
+U_cath[0] = 3.4323 - 0.8428*np.exp(-80.2493*(1-(C_cath[0,0]/Cmax_cath))**1.3198)-3.247e-6*np.exp(20.2645*(1-(C_cath[0,0]/Cmax_cath))**3.8003)+3.2482e-6*np.exp(20.2646*(1-(C_cath[0,0]/Cmax_cath))**3.7995)
+U_anode[0] = 0.6379 + 0.5416*np.exp(-305.5309*(C_anode[0,0]/Cmax_anode))+0.044*np.tanh((-(C_anode[0,0]/Cmax_anode)-0.1958)/0.1088)-0.1978*np.tanh(((C_anode[0,0]/Cmax_anode)-1.0571)/0.0854)-0.6875*np.tanh(((C_anode[0,0]/Cmax_anode)+0.0117)/0.0529)-0.0175*np.tanh(((C_anode[0,0]/Cmax_anode)-0.5692)/0.0875)
+
+
 # Cathode ---------------------------------------------------------
 for j in range(numofsteps-1): 
+    i_area_c = I_dyn[j] / A_cath # A / m2
+    i_area_a = I_dyn[j] / A_anode  # A / m2
+    i_eta_cath = i_area_c /(F* A_cath * vol_cath) #i_area_c / 2*R_cath / (4*math.pi*(R_cath**2))
+    i_eta_anode = i_area_a /(F* A_anode * vol_anode)
+
+    i_flux_cath[j] = I_dyn[j] / ((3*eps_c/R_cath) * F * vol_cath) #i_area_c / ((3*eps_c/R_cath) * F * vol_cath)
+    
+    i_flux_anode[j] = I_dyn[j] / ((3*eps_a/R_anode) * F * vol_anode)
+
+    # Exchange current density from Butler-Volmer 
+    # Cathode
+    i_0_cath[j] = k_cath * F * C_cath[N,j]**alpha * (Cmax_cath - C_cath[N,j])**alpha
+    # Anode
+    i_0_anode[j] = k_anode * F * C_anode[N,j]**alpha * (Cmax_anode - C_anode[N,j])**alpha
+    #
+    # Overpotential at cathode
+    eta_cath[j] = ((2*R_gas*T)/(n*F))*np.arcsinh(((-alpha*i_eta_cath))/i_0_cath[j])
+    # Overpotential at anode
+    eta_anode[j] = ((2*R_gas*T)/(n*F))*np.arcsinh(((alpha*i_eta_anode))/i_0_anode[j])
+    # overpotential 
+    # Anode
+    eta_a[j] = eta_anode[j] - U_anode[j]
+    # Cathode
+    eta_c[j] = eta_cath[j] - U_cath[j]
+    ## Reaction current 
+    # Anode 
+    j_Li_anode[j] = A_anode * i_0_anode[j] * (np.exp(alpha*F*eta_anode[j]/(R_gas*T)) - np.exp(alpha*F*eta_cath[j]/(R_gas*T)))
+    # Cathode
+    j_Li_cathode[j] = A_cath * i_0_cath[j] * (np.exp(alpha*F*eta_anode[j]/(R_gas*T)) - np.exp(alpha*F*eta_cath[j]/(R_gas*T)))   
     for i in range(1,N):
         r2 = r_cath[i]**2
                
@@ -131,24 +177,12 @@ for j in range(numofsteps-1):
         C_cath[i,j+1] = C_cath[i,j] + (deltaC_cath[i,j]*dt)
         
     C_cath[0,j+1] = C_cath[1,j+1]
-    C_cath[N,j+1] = (dr_cath*(-I_dyn[j])/(D_cath*A_cath*F)) + C_cath[N-1,j+1]
+    # C_cath[N,j+1] = (dr_cath*(-j_Li_cathode[j])/(D_cath*A_cath*F)) + C_cath[N-1,j+1]
+    C_cath[N,j+1] = (dr_cath*(-i_area_c)/(D_cath * F)) + C_cath[N-1,j+1]
+
     
     U_cath[j] = 3.4323 - 0.8428*np.exp(-80.2493*(1-(C_cath[i,j]/Cmax_cath))**1.3198)-3.247e-6*np.exp(20.2645*(1-(C_cath[i,j]/Cmax_cath))**3.8003)+3.2482e-6*np.exp(20.2646*(1-(C_cath[i,j]/Cmax_cath))**3.7995)
     
-    # Exchange current density from Butler-Volmer 
-    i_0_cath[j] = k_cath*F*C_cath[N,j]**alpha*(Cmax_cath - C_cath[N,j])**alpha
-    
-    # Overpotential at cathode
-    eta_cath[j] = ((2*R_gas*T)/(n*F))*np.arcsinh(((-alpha*i_eta_cath))/i_0_cath[j])
-    
-    print("Cathode ", round(j/numofsteps,2))
-cathode_plot = figure(1)
-concentration_cath = C_cath[N,0:-1]
-#pyplot.plot(concentration_cath[0:-1] / Cmax_cath, U_cath[0:-2])
-#pyplot.plot(timehis[0:-2], U_cath[0:-2])
-
-# Anode ---------------------------------------------------------
-for j in range(numofsteps-1): 
     for i in range(1,N):
         r2 = r_anode[i]**2
                
@@ -158,26 +192,32 @@ for j in range(numofsteps-1):
         C_anode[i,j+1] = C_anode[i,j] + (deltaC_anode[i,j]*dt)
         
     C_anode[0,j+1] = C_anode[1,j+1]
-    C_anode[N,j+1] = (dr_anode*(I_dyn[j])/(D_anode*A_anode*F)) + C_anode[N-1,j+1]
+    # C_anode[N,j+1] = (dr_anode*(j_Li_anode[j])/(D_anode*A_anode*F)) + C_anode[N-1,j+1]
+    C_anode[N,j+1] = (dr_anode*(i_area_a)/(D_anode * F)) + C_anode[N-1,j+1]
     
     U_anode[j] = 0.6379 + 0.5416*np.exp(-305.5309*(C_anode[i,j]/Cmax_anode))+0.044*np.tanh((-(C_anode[i,j]/Cmax_anode)-0.1958)/0.1088)-0.1978*np.tanh(((C_anode[i,j]/Cmax_anode)-1.0571)/0.0854)-0.6875*np.tanh(((C_anode[i,j]/Cmax_anode)+0.0117)/0.0529)-0.0175*np.tanh(((C_anode[i,j]/Cmax_anode)-0.5692)/0.0875)
     
-    i_0_anode[j] = k_anode * F * C_anode[N,j]**alpha * (Cmax_anode - C_anode[N,j])**alpha
     
-    # Overpotential at anode
-    eta_anode[j] = ((2*R_gas*T)/(n*F))*np.arcsinh(((alpha*i_eta_anode))/i_0_anode[j])
-    
-    print("Anode ", round(j/numofsteps,2))    
-anode_plot = figure(2)
+    # print("Cathode ", round(j/numofsteps,2))
+figure(1)
+concentration_cath = C_cath[N,0:-1]
 concentration_anode = C_anode[N,0:-1]
-#pyplot.plot(concentration_anode[0:-1] / Cmax_anode, U_anode[0:-2])
-#pyplot.plot(timehis[0:-2], U_anode[0:-2])
+plt.plot(concentration_cath[0:-1] / Cmax_cath, U_cath[0:-2])
+plt.legend(['Cathode potential'])
+# plt.plot(timehis[0:-2], U_cath[0:-2])
+
 
 
 # Full Cell ---------------------------------------------------------
 U_cell = U_cath - U_anode + R_int*I_dyn
-cell_plot = figure(3)
-pyplot.plot(timehis[0:-2] , U_cell[0:-2])
-pyplot.ylim(3.2, 3.5)
+figure(2)
+plt.plot(timehis[0:-2] , U_cell[0:-2])
+plt.legend(['full cell'])
+# plt.ylim(3.2, 3.7)
+
+# Plot concentration over time 
+figure(3)
+plt.plot(timehis[0:len(C_anode[1,0:-1])], C_anode[1,0:-1])
+plt.plot(timehis[0:len(C_anode[N,0:-1])], C_anode[N,0:-1])
 
 
